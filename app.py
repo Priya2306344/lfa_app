@@ -1,4 +1,4 @@
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify
 import cv2
 import numpy as np
 import os
@@ -9,85 +9,73 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 
-# -----------------------------
-# LFA ANALYSIS FUNCTION
-# -----------------------------
 def analyze_lfa(image_path):
 
     img = cv2.imread(image_path, 0)
 
     if img is None:
         return {
-            "control_line": "Not Detected",
-            "test_line": "Not Detected",
+            "lines_detected": {
+                "control": "Not Detected",
+                "test": "Not Detected"
+            },
+            "intensity": 0,
             "severity": "Invalid Image"
         }
 
-    # Preprocessing (important for accuracy)
+    # Preprocess
     img = cv2.GaussianBlur(img, (5, 5), 0)
     _, thresh = cv2.threshold(img, 120, 255, cv2.THRESH_BINARY_INV)
 
     h, w = img.shape
 
-    # Split into regions (ASSUMPTION: top = control, bottom = test)
+    # Split strip
     control_region = thresh[0:h//2, :]
     test_region = thresh[h//2:h, :]
 
     control_score = np.sum(control_region == 255)
     test_score = np.sum(test_region == 255)
 
-    # -----------------------------
-    # LINE DETECTION
-    # -----------------------------
     control_line = "Detected" if control_score > 5000 else "Not Detected"
     test_line = "Detected" if test_score > 5000 else "Not Detected"
 
-    # -----------------------------
-    # SEVERITY LOGIC
-    # -----------------------------
-    if test_line == "Not Detected":
+    # Better intensity (use both scores)
+    intensity = float((control_score + test_score) / 2)
+
+    # Improved severity logic
+    if test_score < 2000:
         severity = "Normal"
-    elif test_score < 15000:
+    elif test_score < 5000:
         severity = "Moderate"
     else:
         severity = "High"
 
     return {
-        "control_line": control_line,
-        "test_line": test_line,
+        "lines_detected": {
+            "control": control_line,
+            "test": test_line
+        },
+        "intensity": intensity,
         "severity": severity
     }
 
 
-# -----------------------------
-# ROUTES
-# -----------------------------
 @app.route("/")
 def home():
-    return render_template("index.html")
+    return "LFA App is Running"
 
 
 @app.route("/upload", methods=["POST"])
 def upload():
 
     file = request.files["image"]
-    patient_name = request.form.get("patient_name")
-
     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(filepath)
 
     result = analyze_lfa(filepath)
 
-    return jsonify({
-        "patient_name": patient_name,
-        "control_line": result["control_line"],
-        "test_line": result["test_line"],
-        "severity": result["severity"]
-    })
+    return jsonify(result)
 
 
-# -----------------------------
-# RUN APP
-# -----------------------------
 if __name__ == "__main__":
     app.run(debug=True)
