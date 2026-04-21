@@ -10,7 +10,7 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # -----------------------------
-# IMAGE PREPROCESSING (same idea as Pi)
+# IMAGE ENHANCEMENT
 # -----------------------------
 def enhance_image(image):
     alpha = 1.8
@@ -18,7 +18,7 @@ def enhance_image(image):
     return cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
 
 # -----------------------------
-# LINE DETECTION (FROM RASPBERRY PI)
+# RASPBERRY PI LINE DETECTION
 # -----------------------------
 def detect_lines(window):
 
@@ -90,21 +90,6 @@ def get_severity(intensities):
         return "High"
 
 # -----------------------------
-# LOAD IMAGE FROM REQUEST
-# -----------------------------
-def process_image(filepath):
-
-    image = cv2.imread(filepath)
-
-    if image is None:
-        return [], []
-
-    image = enhance_image(image)
-
-    # NOTE: using full image as window (you can later improve cropping)
-    return detect_lines(image)
-
-# -----------------------------
 # HOME ROUTE
 # -----------------------------
 @app.route("/")
@@ -150,9 +135,18 @@ def upload():
     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(filepath)
 
-    peaks, intensities = process_image(filepath)
+    image = cv2.imread(filepath)
+    image = enhance_image(image)
+
+    peaks, intensities = detect_lines(image)
 
     severity = get_severity(intensities)
+
+    # ---------------- FORMATTED OUTPUT ----------------
+    formatted_lines = {}
+
+    for i, val in enumerate(intensities):
+        formatted_lines[f"Line {i+1}"] = round(val, 2)
 
     return jsonify({
         "patient_details": {
@@ -160,11 +154,9 @@ def upload():
             "age": age,
             "patient_id": patient_id
         },
-        "analysis": {
-            "detected_lines": len(peaks),
-            "intensities": intensities,
-            "severity": severity
-        }
+        "lines_detected": len(peaks),
+        "lines": formatted_lines,
+        "severity": severity
     })
 
 # -----------------------------
