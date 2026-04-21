@@ -10,75 +10,116 @@ UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # -----------------------------
-# IMAGE ANALYSIS FUNCTION
+# IMAGE PREPROCESSING (same idea as Pi)
 # -----------------------------
-def analyze_lfa(image_path):
+def enhance_image(image):
+    alpha = 1.8
+    beta = 60
+    return cv2.convertScaleAbs(image, alpha=alpha, beta=beta)
 
-    img = cv2.imread(image_path, 0)
+# -----------------------------
+# LINE DETECTION (FROM RASPBERRY PI)
+# -----------------------------
+def detect_lines(window):
 
-    if img is None:
-        return {
-            "lines_detected": {
-                "control": "Not Detected",
-                "test": "Not Detected"
-            },
-            "control_intensity": 0,
-            "test_intensity": 0,
-            "severity": "Invalid Image"
-        }
+    red_channel = window[:, :, 2].astype(float)
 
-    img = cv2.GaussianBlur(img, (5, 5), 0)
-    _, thresh = cv2.threshold(img, 120, 255, cv2.THRESH_BINARY_INV)
+    if red_channel.max() == 0:
+        return [], []
 
-    h, w = img.shape
+    red_norm = red_channel / red_channel.max()
 
-    control_region = thresh[0:h//2, :]
-    test_region = thresh[h//2:h, :]
+    profile = red_norm.mean(axis=1)
+    profile = 1 - profile
 
-    control_score = np.sum(control_region == 255)
-    test_score = np.sum(test_region == 255)
+    profile = cv2.GaussianBlur(
+        profile.reshape(-1, 1),
+        (31, 1),
+        0
+    ).flatten()
 
-    control_line = "Detected" if control_score > 5000 else "Not Detected"
-    test_line = "Detected" if test_score > 5000 else "Not Detected"
+    peaks = []
+    intensities = []
 
-    # intensity per line
-    control_intensity = float(control_score)
-    test_intensity = float(test_score)
+    threshold = 0.08
+    min_distance = 80
 
-    # severity logic
-    if test_score < 2000:
-        severity = "Normal"
-    elif test_score < 5000:
-        severity = "Moderate"
+    for i in range(1, len(profile) - 1):
+
+        if profile[i] > profile[i - 1] and profile[i] > profile[i + 1]:
+
+            if profile[i] > threshold:
+
+                if len(peaks) == 0 or i - peaks[-1] > min_distance:
+
+                    peaks.append(i)
+
+                    band_threshold = profile[i] * 0.5
+
+                    top = i
+                    bottom = i
+
+                    while top > 0 and profile[top] > band_threshold:
+                        top -= 1
+
+                    while bottom < len(profile) - 1 and profile[bottom] > band_threshold:
+                        bottom += 1
+
+                    band_region = red_channel[top:bottom, :]
+
+                    intensity = float(np.mean(band_region))
+                    intensities.append(intensity)
+
+    return peaks[:3], intensities[:3]
+
+# -----------------------------
+# SEVERITY LOGIC
+# -----------------------------
+def get_severity(intensities):
+
+    if len(intensities) < 2:
+        return "Invalid"
+
+    test_intensity = intensities[1]
+
+    if test_intensity < 200:
+        return "Normal"
+    elif test_intensity < 230:
+        return "Moderate"
     else:
-        severity = "High"
-
-    return {
-        "lines_detected": {
-            "control": control_line,
-            "test": test_line
-        },
-        "control_intensity": control_intensity,
-        "test_intensity": test_intensity,
-        "severity": severity
-    }
+        return "High"
 
 # -----------------------------
-# HOME ROUTE (QR OPENS HERE)
+# LOAD IMAGE FROM REQUEST
+# -----------------------------
+def process_image(filepath):
+
+    image = cv2.imread(filepath)
+
+    if image is None:
+        return [], []
+
+    image = enhance_image(image)
+
+    # NOTE: using full image as window (you can later improve cropping)
+    return detect_lines(image)
+
+# -----------------------------
+# HOME ROUTE
 # -----------------------------
 @app.route("/")
 def home():
     return redirect("/upload")
 
 # -----------------------------
-# UPLOAD + PATIENT FORM
+# UPLOAD PAGE + PROCESSING
 # -----------------------------
 @app.route("/upload", methods=["GET", "POST"])
 def upload():
 
     if request.method == "GET":
         return render_template_string("""
-        <h2>🧪 LFA Disease Detection System</h2>
+        <h2>🧪 LFA Detection System</h2>
 
         <form method="POST" enctype="multipart/form-data">
 
@@ -91,7 +132,7 @@ def upload():
             <label>Patient ID:</label><br>
             <input type="text" name="patient_id" value="{{id}}" readonly><br><br>
 
-            <label>Capture / Upload LFA Image:</label><br>
+            <label>Capture / Upload Image:</label><br>
             <input type="file" name="image" accept="image/*" capture="camera" required><br><br>
 
             <button type="submit">Analyze</button>
@@ -99,7 +140,7 @@ def upload():
         </form>
         """, id=str(uuid.uuid4())[:8])
 
-    # POST METHOD
+    # ---------------- POST ----------------
     file = request.files["image"]
 
     patient_name = request.form.get("patient_name")
@@ -109,7 +150,9 @@ def upload():
     filepath = os.path.join(UPLOAD_FOLDER, file.filename)
     file.save(filepath)
 
-    result = analyze_lfa(filepath)
+    peaks, intensities = process_image(filepath)
+
+    severity = get_severity(intensities)
 
     return jsonify({
         "patient_details": {
@@ -117,7 +160,11 @@ def upload():
             "age": age,
             "patient_id": patient_id
         },
-        "result": result
+        "analysis": {
+            "detected_lines": len(peaks),
+            "intensities": intensities,
+            "severity": severity
+        }
     })
 
 # -----------------------------
