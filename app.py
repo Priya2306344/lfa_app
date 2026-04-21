@@ -9,9 +9,8 @@ app = Flask(__name__)
 UPLOAD_FOLDER = "uploads"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-
 # -----------------------------
-# LFA ANALYSIS FUNCTION
+# IMAGE ANALYSIS FUNCTION
 # -----------------------------
 def analyze_lfa(image_path):
 
@@ -23,7 +22,8 @@ def analyze_lfa(image_path):
                 "control": "Not Detected",
                 "test": "Not Detected"
             },
-            "intensity": 0,
+            "control_intensity": 0,
+            "test_intensity": 0,
             "severity": "Invalid Image"
         }
 
@@ -41,8 +41,11 @@ def analyze_lfa(image_path):
     control_line = "Detected" if control_score > 5000 else "Not Detected"
     test_line = "Detected" if test_score > 5000 else "Not Detected"
 
-    intensity = float((control_score + test_score) / 2)
+    # intensity per line
+    control_intensity = float(control_score)
+    test_intensity = float(test_score)
 
+    # severity logic
     if test_score < 2000:
         severity = "Normal"
     elif test_score < 5000:
@@ -55,18 +58,17 @@ def analyze_lfa(image_path):
             "control": control_line,
             "test": test_line
         },
-        "intensity": intensity,
+        "control_intensity": control_intensity,
+        "test_intensity": test_intensity,
         "severity": severity
     }
 
-
 # -----------------------------
-# HOME ROUTE
+# HOME ROUTE (QR OPENS HERE)
 # -----------------------------
 @app.route("/")
 def home():
     return redirect("/upload")
-
 
 # -----------------------------
 # UPLOAD + PATIENT FORM
@@ -76,7 +78,7 @@ def upload():
 
     if request.method == "GET":
         return render_template_string("""
-        <h2>LFA Disease Detection System</h2>
+        <h2>🧪 LFA Disease Detection System</h2>
 
         <form method="POST" enctype="multipart/form-data">
 
@@ -89,7 +91,7 @@ def upload():
             <label>Patient ID:</label><br>
             <input type="text" name="patient_id" value="{{id}}" readonly><br><br>
 
-            <label>Upload LFA Image:</label><br>
+            <label>Capture / Upload LFA Image:</label><br>
             <input type="file" name="image" accept="image/*" capture="camera" required><br><br>
 
             <button type="submit">Analyze</button>
@@ -97,9 +99,7 @@ def upload():
         </form>
         """, id=str(uuid.uuid4())[:8])
 
-    # -----------------------------
     # POST METHOD
-    # -----------------------------
     file = request.files["image"]
 
     patient_name = request.form.get("patient_name")
@@ -119,7 +119,6 @@ def upload():
         },
         "result": result
     })
-
 
 # -----------------------------
 # RUN APP
