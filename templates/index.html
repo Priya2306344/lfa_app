@@ -1,69 +1,127 @@
 <!DOCTYPE html>
 <html>
+
 <head>
-    <title>LFA Detection</title>
+    <title>LFA Strip Detection</title>
+
     <style>
-        body {
-            font-family: Arial, sans-serif;
-            margin: 20px;
+
+        body{
+            font-family: Arial;
+            padding:20px;
         }
 
-        #result {
-            margin-top: 20px;
-            padding: 10px;
-            border: 1px solid #ccc;
-            white-space: pre-line;
+        .box{
+            border:1px solid #ccc;
+            padding:20px;
+            border-radius:10px;
+            max-width:500px;
         }
+
+        input{
+            margin:10px 0;
+            width:100%;
+            padding:8px;
+        }
+
+        button{
+            padding:10px 20px;
+            background:#007bff;
+            color:white;
+            border:none;
+            border-radius:5px;
+        }
+
+        pre{
+            background:#f4f4f4;
+            padding:15px;
+            overflow:auto;
+        }
+
     </style>
 </head>
+
 <body>
 
-<h2>LFA Strip Detection</h2>
+    <h2>LFA Strip Detection</h2>
 
-<input type="file" id="imageInput" accept="image/*" capture="environment">
+    <div class="box">
 
-<div id="result">Upload an image to see results</div>
+        <input type="text" id="patient_id" placeholder="Patient ID">
 
-<script>
-document.getElementById("imageInput").addEventListener("change", function () {
+        <input type="text" id="name" placeholder="Patient Name">
 
-    let file = this.files[0];
+        <input type="number" id="age" placeholder="Age">
 
-    let formData = new FormData();
-    formData.append("image", file);
+        <input type="text" id="gender" placeholder="Gender">
 
-    fetch('/upload', {
-        method: 'POST',
-        body: formData
-    })
-    .then(res => res.json())
-    .then(data => {
+        <input type="file" id="imageInput" accept="image/*" capture="environment">
 
-        let output = "";
+        <br><br>
 
-        output += "Lines Detected: " + data.num_lines + "\n";
-        output += "Severity: " + data.severity + "\n\n";
+        <button onclick="uploadImage()">
+            Analyze Strip
+        </button>
 
-        if (data.lines && data.lines.length > 0) {
+    </div>
 
-            output += "Line Details:\n\n";
+    <br>
 
-            data.lines.forEach(line => {
-                output += "Line " + line.line_number + "\n";
-                output += "Position X: " + line.position_x + "\n";
-                output += "Width: " + line.width + "\n";
-                output += "Intensity: " + line.intensity + "\n\n";
+    <div id="result"></div>
+
+    <script>
+
+        async function uploadImage(){
+
+            const fileInput =
+                document.getElementById("imageInput");
+
+            const file =
+                fileInput.files[0];
+
+            if(!file){
+                alert("Please upload image");
+                return;
+            }
+
+            let formData = new FormData();
+
+            formData.append("image", file);
+
+            formData.append(
+                "patient_id",
+                document.getElementById("patient_id").value
+            );
+
+            formData.append(
+                "name",
+                document.getElementById("name").value
+            );
+
+            formData.append(
+                "age",
+                document.getElementById("age").value
+            );
+
+            formData.append(
+                "gender",
+                document.getElementById("gender").value
+            );
+
+            const response = await fetch("/upload", {
+                method: "POST",
+                body: formData
             });
+
+            const data = await response.json();
+
+            document.getElementById("result").innerHTML =
+                "<pre>" +
+                JSON.stringify(data, null, 2) +
+                "</pre>";
         }
 
-        document.getElementById("result").innerText = output;
-    })
-    .catch(err => {
-        document.getElementById("result").innerText = "Error: " + err;
-    });
-
-});
-</script>
+    </script>
 
 </body>
 </html>
