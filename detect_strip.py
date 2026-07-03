@@ -122,58 +122,67 @@ def crop_strip(img):
 
 
 # -------------------------
-# DETECT LINES
+# DETECT LINES (Improved)
 # -------------------------
 def detect_lines(img):
 
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
 
-    blur = cv2.GaussianBlur(gray, (3, 3), 0)
+    # Improve contrast
+    gray = cv2.equalizeHist(gray)
 
-    _, binary = cv2.threshold(
+    # Reduce noise
+    blur = cv2.GaussianBlur(gray, (5, 5), 0)
+
+    # Adaptive threshold
+    binary = cv2.adaptiveThreshold(
         blur,
-        120,
         255,
-        cv2.THRESH_BINARY_INV
+        cv2.ADAPTIVE_THRESH_GAUSSIAN_C,
+        cv2.THRESH_BINARY_INV,
+        21,
+        8
     )
 
+    # Remove noise
+    kernel = np.ones((3, 3), np.uint8)
+    binary = cv2.morphologyEx(binary, cv2.MORPH_OPEN, kernel)
+
+    # Vertical projection
     projection = np.sum(binary, axis=0)
 
-    line_threshold = np.max(projection) * 0.35
+    threshold = np.max(projection) * 0.18
 
     lines = []
+    start = None
 
-    in_line = False
-    start = 0
+    for i in range(len(projection)):
 
-    for i, val in enumerate(projection):
+        if projection[i] > threshold:
 
-        if val > line_threshold and not in_line:
+            if start is None:
+                start = i
 
-            start = i
-            in_line = True
+        else:
 
-        elif val <= line_threshold and in_line:
+            if start is not None:
 
-            end = i
-            in_line = False
+                end = i
 
-            width = end - start
+                if end - start > 4:
 
-            center = (start + end) // 2
+                    center = (start + end) // 2
 
-            if width > 3:
+                    intensity = np.mean(gray[:, start:end])
 
-                intensity = np.mean(
-                    gray[:, start:end]
-                )
+                    lines.append({
+                        "line_number": len(lines) + 1,
+                        "position": int(center),
+                        "width": int(end - start),
+                        "intensity": round(255 - intensity, 2)
+                    })
 
-                lines.append({
-                    "line_number": len(lines) + 1,
-                    "position": int(center),
-                    "width": int(width),
-                    "intensity": round(float(intensity), 2)
-                })
+                start = None
 
     return lines
 
@@ -183,41 +192,39 @@ def detect_lines(img):
 # -------------------------
 def process_image(file):
 
-    file_bytes = np.frombuffer(
-        file.read(),
-        np.uint8
-    )
+    file_bytes = np.frombuffer(file.read(), np.uint8)
 
-    img = cv2.imdecode(
-        file_bytes,
-        cv2.IMREAD_COLOR
-    )
+    img = cv2.imdecode(file_bytes, cv2.IMREAD_COLOR)
 
+    if img is None:
+        return {
+            "error": "Unable to read image"
+        }
+
+    # Crop strip
     cropped = crop_strip(img)
 
+    # Detect lines
     lines = detect_lines(cropped)
 
-    severity = "Normal"
+    # Decide status
+    if len(lines) == 0:
+        status = "Invalid"
 
-    if len(lines) >= 2:
-        severity = "Abnormal"
+    elif len(lines) == 1:
+        status = "Negative"
+
+    elif len(lines) == 2:
+        status = "Positive"
+
+    elif len(lines) == 3:
+        status = "Strong Positive"
+
+    else:
+        status = "Unknown"
 
     return {
-
-        "patient_details": {
-
-            "patient_id": "P1024",
-            "name": "Priya",
-            "age": 24,
-            "gender": "Female"
-        },
-
-        "test_result": {
-
-            "lines_detected": len(lines),
-
-            "line_details": lines,
-
-            "severity": severity
-        }
+        "lines_detected": len(lines),
+        "line_details": lines,
+        "status": status
     }
