@@ -1,7 +1,9 @@
 from flask import Flask, render_template, request, jsonify
 from detect_strip import process_image
+import traceback
 
 app = Flask(__name__)
+
 
 # -------------------------
 # HOME PAGE
@@ -16,9 +18,27 @@ def home():
 # -------------------------
 @app.route('/upload', methods=['POST'])
 def upload():
+
     try:
-        # Get uploaded image
-        file = request.files['image']
+
+        print("========== NEW REQUEST ==========")
+        print("FILES:", request.files)
+        print("FORM:", request.form)
+
+        # Check image exists
+        if "image" not in request.files:
+            return jsonify({
+                "error": "No image received"
+            }), 400
+
+        file = request.files["image"]
+
+        if file.filename == "":
+            return jsonify({
+                "error": "No file selected"
+            }), 400
+
+        print("Image Name:", file.filename)
 
         # Process image
         result = process_image(file)
@@ -32,10 +52,24 @@ def upload():
         return jsonify(result)
 
     except Exception as e:
-        print("ERROR:", e)          # This prints the error in Render logs
+
+        print("========== ERROR ==========")
+        traceback.print_exc()
+
         return jsonify({
+            "success": False,
             "error": str(e)
         }), 500
+
+
+# -------------------------
+# HEALTH CHECK
+# -------------------------
+@app.route('/test')
+def test():
+    return jsonify({
+        "status": "Server is working"
+    })
 
 
 # -------------------------
