@@ -1,9 +1,10 @@
-from flask import Flask, render_template, request, jsonify, redirect
+from flask import Flask, render_template, request, jsonify
 import cv2
 import os
 
 app = Flask(__name__)
 
+# Safe folder paths
 REFERENCE_FOLDER = "images"
 
 REFERENCE_IMAGES = {
@@ -14,62 +15,49 @@ REFERENCE_IMAGES = {
 }
 
 
-# ----------------------------
-# HOME → redirect to patient page
-# ----------------------------
 @app.route("/")
 def home():
-    return redirect("/patient")
+    return render_template("index.html")
 
 
-# ----------------------------
-# PATIENT PAGE
-# ----------------------------
-@app.route("/patient")
-def patient():
-    return render_template("patient.html")
-
-
-# ----------------------------
-# IMAGE COMPARISON FUNCTION
-# ----------------------------
 def compare_images(img1, img2):
     img1 = cv2.resize(img1, (300, 120))
     img2 = cv2.resize(img2, (300, 120))
 
-    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
-    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
+    g1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    g2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
-    diff = cv2.absdiff(gray1, gray2)
+    diff = cv2.absdiff(g1, g2)
+    return float(diff.mean())
 
-    return diff.mean()
 
-
-# ----------------------------
-# ANALYZE ROUTE
-# ----------------------------
 @app.route("/analyze", methods=["POST"])
 def analyze():
 
-    # Patient details
-    name = request.form.get("name")
-    age = request.form.get("age")
-    patient_id = request.form.get("patient_id")
+    file = request.files.get("image")
 
-    # Uploaded image
-    file = request.files["image"]
+    if not file:
+        return jsonify({"error": "No image uploaded"}), 400
 
-    temp_path = "temp.jpg"
+    temp_path = "/tmp/temp.jpg"
     file.save(temp_path)
 
     uploaded = cv2.imread(temp_path)
 
+    if uploaded is None:
+        return jsonify({"error": "Invalid image"}), 400
+
     best_name = None
     best_score = 1e9
 
-    for filename in REFERENCE_IMAGES:
+    # Loop reference images safely
+    for filename, (status, lines) in REFERENCE_IMAGES.items():
 
         ref_path = os.path.join(REFERENCE_FOLDER, filename)
+
+        if not os.path.exists(ref_path):
+            continue
+
         ref = cv2.imread(ref_path)
 
         if ref is None:
@@ -82,12 +70,15 @@ def analyze():
             best_name = filename
 
     if best_name is None:
-        return jsonify({"status": "Unable to classify"})
+        return jsonify({
+            "status": "Unable to classify",
+            "lines_detected": 0,
+            "intensities": []
+        })
 
     status, lines = REFERENCE_IMAGES[best_name]
 
     intensities = []
-
     if lines == 1:
         intensities = [120]
     elif lines == 2:
@@ -96,18 +87,12 @@ def analyze():
         intensities = [145, 140, 135]
 
     return jsonify({
-        "name": name,
-        "age": age,
-        "patient_id": patient_id,
         "status": status,
         "lines_detected": lines,
         "intensities": intensities
     })
 
 
-# ----------------------------
-# RUN LOCALLY
-# ----------------------------
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)

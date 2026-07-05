@@ -1,24 +1,39 @@
 <!DOCTYPE html>
 <html>
 <head>
-    <title>LFA Analyzer</title>
+    <title>LFA Strip Analyzer</title>
 </head>
 <body>
 
-    <h2>LFA Strip Analyzer</h2>
+<h2>LFA Strip Analyzer</h2>
 
-    <!-- Image Upload -->
-    <input type="file" id="imageInput">
+<form id="uploadForm">
+    <input type="file" name="image" id="image" required>
+    <button type="submit">Analyze Strip</button>
+</form>
 
-    <br><br>
+<h3 id="result"></h3>
 
-    <!-- Analyze Button -->
-    <button onclick="analyzeStrip()">Analyze Strip</button>
+<script>
+document.getElementById("uploadForm").onsubmit = async function(e) {
+    e.preventDefault();
 
-    <p id="result"></p>
+    let formData = new FormData();
+    formData.append("image", document.getElementById("image").files[0]);
 
-    <!-- JS File -->
-    <script src="{{ url_for('static', filename='script.js') }}"></script>
+    let response = await fetch("/analyze", {
+        method: "POST",
+        body: formData
+    });
+
+    let data = await response.json();
+
+    document.getElementById("result").innerHTML =
+        "Status: " + data.status +
+        "<br>Lines: " + data.lines_detected +
+        "<br>Intensities: " + data.intensities;
+};
+</script>
 
 </body>
 </html>
