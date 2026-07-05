@@ -1,127 +1,24 @@
 <!DOCTYPE html>
 <html>
-
 <head>
-    <title>LFA Strip Detection</title>
-
-    <style>
-
-        body{
-            font-family: Arial;
-            padding:20px;
-        }
-
-        .box{
-            border:1px solid #ccc;
-            padding:20px;
-            border-radius:10px;
-            max-width:500px;
-        }
-
-        input{
-            margin:10px 0;
-            width:100%;
-            padding:8px;
-        }
-
-        button{
-            padding:10px 20px;
-            background:#007bff;
-            color:white;
-            border:none;
-            border-radius:5px;
-        }
-
-        pre{
-            background:#f4f4f4;
-            padding:15px;
-            overflow:auto;
-        }
-
-    </style>
+    <title>LFA Analyzer</title>
 </head>
-
 <body>
 
-    <h2>LFA Strip Detection</h2>
+    <h2>LFA Strip Analyzer</h2>
 
-    <div class="box">
+    <!-- Image Upload -->
+    <input type="file" id="imageInput">
 
-        <input type="text" id="patient_id" placeholder="Patient ID">
+    <br><br>
 
-        <input type="text" id="name" placeholder="Patient Name">
+    <!-- Analyze Button -->
+    <button onclick="analyzeStrip()">Analyze Strip</button>
 
-        <input type="number" id="age" placeholder="Age">
+    <p id="result"></p>
 
-        <input type="text" id="gender" placeholder="Gender">
-
-        <input type="file" id="imageInput" accept="image/*" capture="environment">
-
-        <br><br>
-
-        <button onclick="uploadImage()">
-            Analyze Strip
-        </button>
-
-    </div>
-
-    <br>
-
-    <div id="result"></div>
-
-    <script>
-
-        async function uploadImage(){
-
-            const fileInput =
-                document.getElementById("imageInput");
-
-            const file =
-                fileInput.files[0];
-
-            if(!file){
-                alert("Please upload image");
-                return;
-            }
-
-            let formData = new FormData();
-
-            formData.append("image", file);
-
-            formData.append(
-                "patient_id",
-                document.getElementById("patient_id").value
-            );
-
-            formData.append(
-                "name",
-                document.getElementById("name").value
-            );
-
-            formData.append(
-                "age",
-                document.getElementById("age").value
-            );
-
-            formData.append(
-                "gender",
-                document.getElementById("gender").value
-            );
-
-            const response = await fetch("/upload", {
-                method: "POST",
-                body: formData
-            });
-
-            const data = await response.json();
-
-            document.getElementById("result").innerHTML =
-                "<pre>" +
-                JSON.stringify(data, null, 2) +
-                "</pre>";
-        }
-
-    </script>
+    <!-- JS File -->
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
 
 </body>
 </html>

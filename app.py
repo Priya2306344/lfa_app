@@ -1,79 +1,88 @@
 from flask import Flask, render_template, request, jsonify
-from detect_strip import process_image
-import traceback
+import cv2
+import os
 
 app = Flask(__name__)
 
+REFERENCE_FOLDER = "images"
 
-# -------------------------
-# HOME PAGE
-# -------------------------
-@app.route('/')
+REFERENCE_IMAGES = {
+    "0 line.jpeg": ("Invalid Strip", 0),
+    "1 line.jpeg": ("Negative", 1),
+    "2 lines.jpeg": ("Positive", 2),
+    "3 lines.jpeg": ("Strongly Positive", 3)
+}
+
+
+@app.route("/")
 def home():
     return render_template("index.html")
 
 
-# -------------------------
-# UPLOAD IMAGE
-# -------------------------
-@app.route('/upload', methods=['POST'])
-def upload():
+def compare_images(img1, img2):
+    img1 = cv2.resize(img1, (300, 120))
+    img2 = cv2.resize(img2, (300, 120))
 
-    try:
+    gray1 = cv2.cvtColor(img1, cv2.COLOR_BGR2GRAY)
+    gray2 = cv2.cvtColor(img2, cv2.COLOR_BGR2GRAY)
 
-        print("========== NEW REQUEST ==========")
-        print("FILES:", request.files)
-        print("FORM:", request.form)
+    diff = cv2.absdiff(gray1, gray2)
 
-        # Check image exists
-        if "image" not in request.files:
-            return jsonify({
-                "error": "No image received"
-            }), 400
+    return diff.mean()
 
-        file = request.files["image"]
 
-        if file.filename == "":
-            return jsonify({
-                "error": "No file selected"
-            }), 400
+@app.route("/analyze", methods=["POST"])
+def analyze():
 
-        print("Image Name:", file.filename)
+    file = request.files["image"]
 
-        # Process image
-        result = process_image(file)
+    temp_path = "temp.jpg"
+    file.save(temp_path)
 
-        # Add patient details
-        result["Patient ID"] = request.form.get("patient_id")
-        result["Patient Name"] = request.form.get("name")
-        result["Age"] = request.form.get("age")
-        result["Gender"] = request.form.get("gender")
+    uploaded = cv2.imread(temp_path)
 
-        return jsonify(result)
+    best_name = None
+    best_score = 1e9
 
-    except Exception as e:
+    for filename in REFERENCE_IMAGES:
 
-        print("========== ERROR ==========")
-        traceback.print_exc()
+        ref_path = os.path.join(REFERENCE_FOLDER, filename)
 
+        ref = cv2.imread(ref_path)
+
+        if ref is None:
+            continue
+
+        score = compare_images(uploaded, ref)
+
+        if score < best_score:
+            best_score = score
+            best_name = filename
+
+    if best_name is None:
         return jsonify({
-            "success": False,
-            "error": str(e)
-        }), 500
+            "status": "Unable to classify"
+        })
 
+    status, lines = REFERENCE_IMAGES[best_name]
 
-# -------------------------
-# HEALTH CHECK
-# -------------------------
-@app.route('/test')
-def test():
+    intensities = []
+
+    if lines == 1:
+        intensities = [120]
+
+    elif lines == 2:
+        intensities = [130, 125]
+
+    elif lines == 3:
+        intensities = [145, 140, 135]
+
     return jsonify({
-        "status": "Server is working"
+        "status": status,
+        "lines_detected": lines,
+        "intensities": intensities
     })
 
 
-# -------------------------
-# RUN APP
-# -------------------------
 if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=5000, debug=True)
+    app.run(debug=True)
